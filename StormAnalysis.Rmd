@@ -1,0 +1,97 @@
+---
+title: "Storm Data Analysis"
+output: html_document
+---
+
+##Synopsis
+
+
+##Introduction
+
+
+##Data Processing
+The dataset for this report comes from the National Climatic Data Center (NCDC), which compiles the data from 124 regional sites of the National Weather Service (NWS). The NCDC performs some pre-processing of the data, for example, to convert verbal locations to approximate latitude and longidtude of events. 
+
+The data can be processed as seen in the code below. For the purposes of this analysis, we are answering two questions (discussed in the _Introduction_ section), and will not need to keep most of the data imported. Reducing the data size will speed up processing.
+
+```{r}
+stormDataTotal<-read.csv("repdata-data-StormData.csv.bz2")
+stormData<-stormDataTotal[, names(stormDataTotal) %in% c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+evtypes<-length(unique(stormData$EVTYPE))
+```
+
+Having gathered a reduced data set, in `stormData`, we can start analyzing it to answer the pending questions. If we chop the dataset by health and damage only categories, and drop anything without relevant data (for example, damage = 0), then the remainder of the analysis will be simple
+
+```{r}
+healthData<-subset(stormData, INJURIES > 0 | FATALITIES > 0)
+healthData<-healthData[,names(healthData) %in% c("EVTYPE", "FATALITIES", "INJURIES")]
+damageData<-subset(stormData, PROPDMG > 0 | CROPDMG > 0)
+damageData<-damageData[, names(damageData) %in% c("EVTYPE", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+```
+
+When adding damage costs together, we are looking at combining `DMG` amounts and `DMGEXP` factors. There seems to be the following pattern in the data:
+```
+h,H = 100 (hundred)
+k,K = 1,000 (thousand)
+m,M = 1,000,000 (million)
+b,B = 1,000,000,000 (billion)
+```
+Sometimes there's numbers, or `+` or `-` values instead of the characters. Numbers are character split values, for example, a `DMG` value of 15 and a `EXP` value of 8 would be a total value of $158. Plus and minus are qualifiers for estimates, they'll be dropped in this analysis. 
+
+Transforming the letters to actual amounts requires a function:
+```{r}
+valueExp<-function(dmg, dmgExp){
+    dmg <- dmg
+    if(tolower(dmgExp) == "h") {
+        dmg <- dmg*100
+    }
+    else if(tolower(dmgExp) == "k") {
+        dmg <- dmg*1000
+    }
+    else if (tolower(dmgExp) == "m") {
+        dmg <- dmg*1000000
+    }
+    else if(tolower(dmgExp) == "b"){
+        dmg <- dmg * 1000000000
+    }
+    else if (dmgExp == "+" | dmgExp == "-"){
+        dmg <- dmg
+    }
+    else if (dmgExp != "" & dmgExp != "?"){
+        dmg <- as.numeric(paste(as.character(dmg),  as.character(dmgExp), sep=""))
+    }
+    else {
+        dmg <- dmg
+    }
+    return(dmg)
+}
+```
+
+We can apply the above function to the damage data to get a dollar amount. This is a long process, normal R looping shortcuts (`lapply`, etc.) don't work because we have multiple inputs. So by preallocating the results list, and handling everything in one loop, we keep the time down slightly. Most systems will still take on the order of a few minutes to perform this analysis. We can then drop the separated damage values and just hang onto the costs by event.
+```{r}
+propresults <- numeric(length(damageData$PROPDMG))
+cropresults <- numeric(length(damageData$CROPDMG))
+
+#FIND A BETTER SOLUTION
+for (i in 1:length(damageData$PROPDMG)){
+    propresults<-append(results, valueExp(damageData$PROPDMG[i], damageData$PROPDMGEXP[i]))
+    cropresults<-append(results, valueExp(damageData$CROPDMG[i], damageData$CROPDMGEXP[i]))
+}
+
+damageData["PROPERTYDAMAGE"]<-propresults
+damageData["CROPDAMAGE"]<-cropresults
+damageData<-damageData[,names(damageData) %in% c("EVTYPE", "PROPERTYDAMAGE", "CROPDAMAGE")]
+```
+
+Now that that's done. We can finish our data prep with some melting and casting using `reshape2`. 
+
+```{r}
+library(reshape2)
+#BROKEN
+healthData<-recast(healthData, "EVTYPE"~"FATALITIES"~"INJURIES", fun.aggregate = sum, id.var="EVTYPE")
+damageData<-recast(damageData, "EVTYPE"~"PROPERTYDAMAGE"~"CROPDAMAGE", fun.aggregate = sum, id.var="EVTYPE")
+```
+
+##Results
+There are `r evtypes` types of storm data categories, some of which have a much larger impact on the economy and population health than others. 
+
