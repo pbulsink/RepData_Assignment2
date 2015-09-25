@@ -12,21 +12,44 @@ output: html_document
 ##Data Processing
 The dataset for this report comes from the National Climatic Data Center (NCDC), which compiles the data from 124 regional sites of the National Weather Service (NWS). The NCDC performs some pre-processing of the data, for example, to convert verbal locations to approximate latitude and longidtude of events. 
 
-The data can be processed as seen in the code below. For the purposes of this analysis, we are answering two questions (discussed in the _Introduction_ section), and will not need to keep most of the data imported. Reducing the data size will speed up processing.
+The data can be read in as seen in the code below. This is a large dataset, the data reading takes quite some time. For this reason, this step has the cache set to true to speed further analysis. In this study, we are answering two questions (discussed in the _Introduction_ section), and will not need to keep most of the data imported. Reducing the data size will speed up processing.
 
-```{r}
-stormDataTotal<-read.csv("repdata-data-StormData.csv.bz2")
-stormData<-stormDataTotal[, names(stormDataTotal) %in% c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+```{r cache = TRUE}
+stormData<-read.csv("repdata-data-StormData.csv.bz2")
 evtypes<-length(unique(stormData$EVTYPE))
 ```
 
-Having gathered a reduced data set, in `stormData`, we can start analyzing it to answer the pending questions. If we chop the dataset by health and damage only categories, and drop anything without relevant data (for example, damage = 0), then the remainder of the analysis will be simple
+Having gathered a reduced data set, in `stormData`, we can start reducing the size of the data and analyzing it to answer the pending questions. If we chop the dataset by health and damage only categories, and drop anything without relevant data (for example, damage = 0), then the remainder of the analysis will be simple
 
 ```{r}
 healthData<-subset(stormData, INJURIES > 0 | FATALITIES > 0)
-healthData<-healthData[,names(healthData) %in% c("EVTYPE", "FATALITIES", "INJURIES")]
+healthData<-healthData[,names(healthData) %in% c("EVTYPE", "FATALITIES", "INJURIES", "BGN_DATE", "END_DATE")]
 damageData<-subset(stormData, PROPDMG > 0 | CROPDMG > 0)
-damageData<-damageData[, names(damageData) %in% c("EVTYPE", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+damageData<-damageData[, names(damageData) %in% c("EVTYPE", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP", "BGN_DATE", "END_DATE")]
+```
+
+Before we move on into the data we'll be manipulating the dates of the events. For simplicity, we'll average the start and end date of each event to a new column.
+
+In R there is no built in vectorized date averaging function. While this can be approximated by the `apply` set of tools, the required data verification & protection aren't available. So a function will be used to control date averaging:
+```{r}
+meanDates<-function(date1, date2){
+    if(is.na(date2) | date2 == 0) {
+        return(date1)
+    } else if(date2!=date1) {
+        return(mean.Date(c(date1,date2)))
+    } else {
+        return(date1)
+    }
+}
+```
+
+```{r}
+#Hella slow. Look at vectorize
+damageData$BGN_DATE <- as.Date(as.vector(damageData$BGN_DATE), format="%m/%d/%Y %H:%M:%S")
+damageData$END_DATE <- as.Date(as.vector(damageData$END_DATE), format="%m/%d/%Y %H:%M:%S")
+damageData$END_DATE[is.na(damageData$END_DATE)] <- damageData$BGN_DATE[is.na(damageData$END_DATE)]
+damageData$DATE<-apply(damageData, 1 ,function(x) meanDates(x["BGN_DATE"], damageData["END_DATE"]))
+
 ```
 
 When adding damage costs together, we are looking at combining `DMG` amounts and `DMGEXP` factors. There seems to be the following pattern in the data:
@@ -40,58 +63,65 @@ Sometimes there's numbers, or `+` or `-` values instead of the characters. Numbe
 
 Transforming the letters to actual amounts requires a function:
 ```{r}
-valueExp<-function(dmg, dmgExp){
-    dmg <- dmg
-    if(tolower(dmgExp) == "h") {
+valueExp<-function(dmg){
+    if(is.na(dmg)) {return(0)}
+    dmg<-paste0("0",dmg)
+    dmgExp<-tolower(substr(dmg, nchar(dmg), nchar(dmg)))
+    dmg<-as.numeric(substr(dmg,1,nchar(dmg)-1))
+    if(dmgExp == "h") {
         dmg <- dmg*100
-    }
-    else if(tolower(dmgExp) == "k") {
+    }else if(dmgExp == "k") {
         dmg <- dmg*1000
-    }
-    else if (tolower(dmgExp) == "m") {
+    }else if (dmgExp == "m") {
         dmg <- dmg*1000000
-    }
-    else if(tolower(dmgExp) == "b"){
+    }else if(dmgExp == "b"){
         dmg <- dmg * 1000000000
-    }
-    else if (dmgExp == "+" | dmgExp == "-"){
+    }else if (dmgExp == "+" | dmgExp == "-"){
+        dmg <- dmg
+    }else if (dmgExp != "?"){
+        dmg <- as.numeric(paste0(dmg, dmgExp))
+    }else {
         dmg <- dmg
     }
-    else if (dmgExp != "" & dmgExp != "?"){
-        dmg <- as.numeric(paste(as.character(dmg),  as.character(dmgExp), sep=""))
-    }
-    else {
-        dmg <- dmg
+    if (is.na(dmg)) {  # Catch in case of non-normal input
+        dmg <- 0
     }
     return(dmg)
 }
 ```
 
-We can apply the above function to the damage data to get a dollar amount. This is a long process, normal R looping shortcuts (`lapply`, etc.) don't work because we have multiple inputs. So by preallocating the results list, and handling everything in one loop, we keep the time down slightly. Most systems will still take on the order of a few minutes to perform this analysis. We can then drop the separated damage values and just hang onto the costs by event.
+We can apply the above function to the damage data to get a dollar amount. This is a long process, even after significant optimization steps. Most systems will still take on the order of a few seconds to a minute to perform this analysis. We can then drop the separated damage values and just hang onto the costs by event.
 ```{r}
-propresults <- numeric(length(damageData$PROPDMG))
-cropresults <- numeric(length(damageData$CROPDMG))
+damageData["PROPDAMAGE"]<-paste0(damageData$PROPDMG, damageData$PROPDMGEXP)
+damageData["CROPDAMAGE"]<-paste0(damageData$CROPDMG, damageData$CROPDMGEXP)
+damageData["PROPDAMAGE"]<-sapply(damageData$PROPDAMAGE, function(x) valueExp(x))
+damageData["CROPDAMAGE"]<-sapply(damageData$CROPDAMAGE, function(x) valueExp(x))
 
-#FIND A BETTER SOLUTION
-for (i in 1:length(damageData$PROPDMG)){
-    propresults<-append(results, valueExp(damageData$PROPDMG[i], damageData$PROPDMGEXP[i]))
-    cropresults<-append(results, valueExp(damageData$CROPDMG[i], damageData$CROPDMGEXP[i]))
-}
-
-damageData["PROPERTYDAMAGE"]<-propresults
-damageData["CROPDAMAGE"]<-cropresults
-damageData<-damageData[,names(damageData) %in% c("EVTYPE", "PROPERTYDAMAGE", "CROPDAMAGE")]
+damageData<-damageData[,names(damageData) %in% c("EVTYPE", "PROPDAMAGE", "CROPDAMAGE")]
 ```
 
-Now that that's done. We can finish our data prep with some melting and casting using `reshape2`. 
+Now that that's done. We can finish our data prep with some melting and casting using the popular `reshape2` package. This will sum up each type of weather event's health impact (fatalities and injuries) or damage costs (crops or property) and combine them in an easy to read format. Well also forget about all the types of weather that didn't cause damage or have health impacts. 
 
 ```{r}
 library(reshape2)
-#BROKEN
-healthData<-recast(healthData, "EVTYPE"~"FATALITIES"~"INJURIES", fun.aggregate = sum, id.var="EVTYPE")
-damageData<-recast(damageData, "EVTYPE"~"PROPERTYDAMAGE"~"CROPDAMAGE", fun.aggregate = sum, id.var="EVTYPE")
+healthData<-melt(healthData, id.var="EVTYPE")
+healthData<-dcast(healthData, EVTYPE~variable, sum)
+healthData<-droplevels(healthData)
+healthEV<-length(unique(healthData$EVTYPE))
+damageData<-melt(damageData, id.var="EVTYPE")
+damageData<-dcast(damageData, EVTYPE~variable, sum)
+damageData<-droplevels(damageData)
+damageEV<-length(unique(damageData$EVTYPE))
 ```
 
 ##Results
-There are `r evtypes` types of storm data categories, some of which have a much larger impact on the economy and population health than others. 
+There are `r evtypes` types of storm data categories, some of which have a much larger impact on the economy and population health than others. Many of these are innocent though, with only `r damageEV` events causing damage, and `r healthEV` having an impact on population health and mortality. 
 
+The total cost of damage to property and crops by all storms can be calculated:
+```{r}
+propertyDamage<-sum(damageData$PROPDAMAGE, na.rm=TRUE)
+cropDamage <- sum(damageData$CROPDAMAGE, na.rm=TRUE)
+totalDamgae<-sum(propertyDamage, cropDamage)
+```
+
+From 
