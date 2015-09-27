@@ -1,7 +1,10 @@
 ---
 title: "Storm Data Analysis"
 author: "Philip Bulsink"
-output: html_document
+output: 
+  html_document:
+    fig_caption: yes
+    keep_md: yes
 ---
 
 ##Synopsis
@@ -127,7 +130,6 @@ damageData["CROPDAMAGE"]<-sapply(damageData$CROPDAMAGE, function(x) valueExp(x))
 damageData<-damageData[,names(damageData) %in% c("EVENT", "PROPDAMAGE", "CROPDAMAGE")]
 ```
 
-
 Now that that's done, we can finish our data preparation with some melting and casting using the popular `reshape2` package. This will sum up each type of weather event's health impact (fatalities and injuries) or damage costs (crops or property) and combine them in an easy to read format. Well also forget about all the types of weather that didn't cause damage or have health impacts. 
 
 ```{r}
@@ -158,51 +160,61 @@ totalCasualties<-sum(fatalities, injuries)
 
 From all of the events collected we can see that the total property damgage was $`r format(propertyDamage, scientific = FALSE)`, and the total crop damage was $`r format(cropDamage, scientific = FALSE)`, for a grand total of $`r format(totalDamage, scientific = FALSE)` lost in weather events. Similarly, there were `r format(injuries, scientific = FALSE)` injuries in events, and `r format(fatalities, scientific = FALSE)` fatalities in the weather events.
 
-Digging into the damage and health cost by event type reveals the most significant impacts on society. We can see the event types and their cost in the following plot:
+Digging into the damage and health cost by event type reveals the most significant impacts on society. 
 
 ```{r}
 proplist<-head(damageData[order(-damageData$PROPDAMAGE),],5)
 croplist<-head(damageData[order(-damageData$CROPDAMAGE),],5)
-totallist<-head(damageData[order(-damageData$TOTALDAMAGE),],5)
+totallist<-droplevels(unique(rbind(proplist, croplist)))
 ```
 
-From this, the most expensive events for property are `r levels(droplevels(proplist$EVENT))`, while the most damaging for crops are `r levels(droplevels(croplist$EVENT))`. The overall most expensive events are `r levels(droplevels(totallist$EVENT))`.
+From this, the most expensive events for property are `r levels(droplevels(proplist$EVENT))[1:length(levels(droplevels(proplist$EVENT)))-1]` and `r levels(droplevels(proplist$EVENT))[length(levels(droplevels(proplist$EVENT)))]`, while the most damaging for crops are `r levels(droplevels(croplist$EVENT))[1:length(levels(droplevels(croplist$EVENT)))-1]` and `r levels(droplevels(croplist$EVENT))[length(levels(droplevels(croplist$EVENT)))]`. The overall most expensive events are `r levels(droplevels(totallist$EVENT))[1:length(levels(droplevels(totallist$EVENT)))-1]` and `r levels(droplevels(totallist$EVENT))[length(levels(droplevels(totallist$EVENT)))]`.
 
-```{r fig.cap="Damage costs for the five most expensive weather events. Property damage is shown in red, and crop damage in aqua."}
+We can visualize this information to see the event types and their cost in the following plot:
+```{r fig.cap="*Damage costs for the five most expensive weather events. Property damage is shown in red, and crop damage in aqua.*"}
 library(ggplot2)
-dmglist<-droplevels(head(damageData[order(-damageData$TOTALDAMAGE),],5))
+library(scales)
+dmglist<-droplevels(unique(rbind(proplist, croplist)))
+dmglist$EVENT<-factor(dmglist$EVENT, levels=dmglist[order(-dmglist$TOTALDAMAGE),]$EVENT)
 dmglist<-subset(dmglist, select=-c(TOTALDAMAGE))
 dmglist<-melt(dmglist, id.vars = "EVENT")
 ggplot(dmglist, aes(x=dmglist$EVENT, y=dmglist$value))+
-    geom_bar(stat="identity", aes(fill=dmglist$variable))+
+    geom_bar(stat="identity", position="dodge", aes(fill=dmglist$variable))+
     xlab("Event Type")+
+    theme(axis.text.x=element_text(angle=45,vjust=1, hjust=1),
+          panel.grid.minor.x=element_blank(),
+          panel.grid.major.x=element_blank())+
     ylab("Damage Value")+
-    ggtitle("Damage Cost for the Most Expensive Weather Types")+
-    scale_fill_discrete(breaks=c("PROPDAMAGE", "CROPDAMAGE"), labels=c("Property Damage", "Crop Damage"), name="")
+    ggtitle("Damage Cost for the Most Expensive Weather Events")+
+    scale_fill_discrete(breaks=c("PROPDAMAGE", "CROPDAMAGE"), labels=c("Property Damage", "Crop Damage"), name="")+
+    scale_y_continuous(labels=dollar)
 ```
 
-Similarly, we can analyze the data to discern the largest population health impact:
+Similarly, we can analyze the data to discern the largest population health impact. 
 ```{r}
 injurylist<-head(healthData[order(-healthData$INJURIES),],5)
 fatalitylist<-head(healthData[order(-healthData$FATALITIES),],5)
-casualtylist<-head(healthData[order(-healthData$CASUALTIES),],5)
+casualtylist<-unique(rbind(injurylist, fatalitylist))
 ```
 
-And we can visualize in plots:
-```{r fig.cap="Population health costs for the five highest impact weather events. Fatalities are shown in red, and injuries in aqua."}
-healthlist<-droplevels(head(healthData[order(-healthData$CASUALTIES),],5))
+Therefore, the most fatal events are `r levels(droplevels(fatalitylist$EVENT))[1:length(levels(droplevels(fatalitylist$EVENT)))-1]` and `r levels(droplevels(fatalitylist$EVENT))[length(levels(droplevels(fatalitylist$EVENT)))]`, while the events with the most injuries are `r levels(droplevels(injurylist$EVENT))[1:length(levels(droplevels(injurylist$EVENT)))-1]` and `r levels(droplevels(injurylist$EVENT))[length(levels(droplevels(injurylist$EVENT)))]`. The highest number of total casualties is in `r levels(droplevels(casualtylist$EVENT))[1:length(levels(droplevels(casualtylist$EVENT)))-1]` and `r levels(droplevels(casualtylist$EVENT))[length(levels(droplevels(casualtylist$EVENT)))]`.
+
+```{r fig.cap="*Population health costs for the five highest impact weather events. Fatalities are shown in red, and injuries in aqua.*"}
+healthlist<-droplevels(unique(rbind(injurylist, fatalitylist)))
+healthlist$EVENT<-factor(healthlist$EVENT, levels=healthlist[order(-healthlist$CASUALTIES),]$EVENT)
 healthlist<-subset(healthlist, select=-c(CASUALTIES))
 healthlist<-melt(healthlist, id.vars="EVENT")
 ggplot(healthlist, aes(healthlist$EVENT, healthlist$value))+
-    geom_bar(stat="identity", aes(fill=healthlist$variable))+
+    geom_bar(stat="identity", position="dodge", aes(fill=healthlist$variable))+
     xlab("Event Type") +
+    theme(axis.text.x=element_text(angle=45,vjust=1, hjust=1),
+          panel.grid.minor.x=element_blank(),
+          panel.grid.major.x=element_blank())+
     ylab("Total Casualties")+
-    ggtitle("Total Casualties for the Most Harmful Weather Types")+
-    scale_fill_discrete(breaks=c("FATALITIES", "INJURIES"), labels=c("Fatalities", "Injuries"), name="")
+    ggtitle("Total Casualties for the Most Harmful Weather Events")+
+    scale_fill_discrete(breaks=c("FATALITIES", "INJURIES"), labels=c("Fatalities", "Injuries"), name="")+
+    scale_y_continuous(labels=comma)
 ```
-
-
-Therefore, the most fatal events are `r levels(droplevels(fatalitylist$EVENT))`, while the events with the most injuries are `r levels(droplevels(injurylist$EVENT))`. The highest number of total casualties is in `r levels(droplevels(casualtylist$EVENT))`.
 
 ##Conclusion
 
