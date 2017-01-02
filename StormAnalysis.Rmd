@@ -144,7 +144,7 @@ damageEV<-length(unique(damageData$EVENT))
 ```
 
 ##Results
-There are `r numEvents` types of storm data categories, some of which have a much larger impact on the economy and population health than others. Many of these are innocent though, with only `r damageEV` distinct events causing damage, and `r healthEV` distinct events having an impact on population health and mortality. 
+There are `r numEvents` types of storm data categories, some of which have a much larger impact on the economy and population health than others. Some of these are innocent though, with only `r damageEV` distinct events causing damage, and `r healthEV` distinct events having an impact on population health and mortality. 
 
 The total cost of damage to property and crops by all storms can be calculated:
 ```{r}

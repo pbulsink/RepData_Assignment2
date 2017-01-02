@@ -1,7 +1,8 @@
 name: Publish Document
+title:
 account: rpubs
 server: rpubs.com
-bundleId:
-        https://api.rpubs.com/api/v1/document/113351/e1baa1945ce842dfad1a62cd8a849491
-url: http://rpubs.com/pbulsink/113351
-when: 1443376815.45307
+appId: https://api.rpubs.com/api/v1/document/239266/2823d6238ce64fa685676ba97ce022fa
+bundleId: https://api.rpubs.com/api/v1/document/239266/2823d6238ce64fa685676ba97ce022fa
+url: http://rpubs.com/publish/claim/239266/7f761d5c353f4dd8bbf88b27d82f69cc
+when: 1483389411.91486

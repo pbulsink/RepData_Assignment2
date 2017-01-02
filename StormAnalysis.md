@@ -160,7 +160,7 @@ damageEV <- length(unique(damageData$EVENT))
 ```
 
 ##Results
-There are 25 types of storm data categories, some of which have a much larger impact on the economy and population health than others. Many of these are innocent though, with only 23 distinct events causing damage, and 23 distinct events having an impact on population health and mortality. 
+There are 25 types of storm data categories, some of which have a much larger impact on the economy and population health than others. Some of these are innocent though, with only 23 distinct events causing damage, and 23 distinct events having an impact on population health and mortality. 
 
 The total cost of damage to property and crops by all storms can be calculated:
 
@@ -208,7 +208,7 @@ ggplot(dmglist, aes(x = dmglist$EVENT, y = dmglist$value)) + geom_bar(stat = "id
         "Crop Damage"), name = "") + scale_y_continuous(labels = dollar)
 ```
 
-![*Damage costs for the five most expensive weather events. Property damage is shown in red, and crop damage in aqua.*](StormAnalysis_files/figure-html/unnamed-chunk-10-1.png) 
+![*Damage costs for the five most expensive weather events. Property damage is shown in red, and crop damage in aqua.*](StormAnalysis_files/figure-html/unnamed-chunk-10-1.png)
 
 Similarly, we can analyze the data to discern the largest population health impact. 
 
@@ -235,7 +235,7 @@ ggplot(healthlist, aes(healthlist$EVENT, healthlist$value)) + geom_bar(stat = "i
         "Injuries"), name = "") + scale_y_continuous(labels = comma)
 ```
 
-![*Population health costs for the five highest impact weather events. Fatalities are shown in red, and injuries in aqua.*](StormAnalysis_files/figure-html/unnamed-chunk-12-1.png) 
+![*Population health costs for the five highest impact weather events. Fatalities are shown in red, and injuries in aqua.*](StormAnalysis_files/figure-html/unnamed-chunk-12-1.png)
 
 ##Conclusion
 
